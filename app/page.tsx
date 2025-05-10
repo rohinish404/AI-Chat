@@ -1,103 +1,148 @@
-import Image from "next/image";
+"use client"
+import { ToolResult } from "@/types/types"
+import { useChat } from "@ai-sdk/react"
+import { Search, Send, Loader2 } from "lucide-react"
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
+    maxSteps: 5,
+  })
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  return (
+    <div className="flex flex-col w-full max-w-4xl min-h-screen mx-auto text-zinc-100">
+      <header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-sm">
+        <div className="container flex items-center justify-between h-16 px-4">
+          <h1 className="text-xl font-bold text-white">AI Search Assistant</h1>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
+      </header>
+
+      <div className="flex-grow p-4 pb-32 overflow-y-auto">
+        {messages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-[70vh] text-center">
+            <Search className="w-16 h-16 mb-4 text-zinc-600" />
+            <h2 className="text-2xl font-semibold text-zinc-400">Ask me anything</h2>
+            <p className="max-w-md mt-2 text-zinc-500">
+              I can search the web and provide information on various topics
+            </p>
+          </div>
+        ) : (
+          messages.map((message) => (
+            <div
+              key={message.id}
+              className={`mb-6 ${message.role === "user" ? "ml-auto max-w-[80%]" : "mr-auto max-w-[90%]"}`}
+            >
+              <div
+                className={`p-4 rounded-lg ${
+                  message.role === "user" ? "bg-blue-600 text-white" : "bg-zinc-800 text-zinc-100"
+                }`}
+              >
+                {message.parts.map((part, i) => {
+                  const partKey = `${message.id}-part-${i}`
+
+                  switch (part.type) {
+                    case "text":
+                      return (
+                        <div key={partKey} className="whitespace-pre-wrap">
+                          {part.text}
+                        </div>
+                      )
+
+                    case "tool-invocation": {
+                      const toolInvocation = part.toolInvocation
+                      const { toolName, toolCallId, state } = toolInvocation
+
+                      if (toolName === "searchGoogle") {
+                        switch (state) {
+                          case "call":
+                            return (
+                              <div key={partKey} className="my-2 p-3 bg-zinc-700/50 rounded-md">
+                                <div className="flex items-center gap-2 text-yellow-400">
+                                  <Search className="w-4 h-4" />
+                                  <span className="font-medium">Searching Google...</span>
+                                </div>
+                                {toolInvocation.args?.query && (
+                                  <p className="mt-1 text-sm text-zinc-300">"{toolInvocation.args.query}"</p>
+                                )}
+                              </div>
+                            )
+                          case "result":
+                            if (!toolInvocation.result) return null
+
+                            return (
+                              <div key={partKey} className="my-3 rounded-md overflow-hidden border border-zinc-700">
+                                <div className="bg-zinc-700 p-2 text-sm font-medium flex items-center gap-2">
+                                  <Search className="w-4 h-4" />
+                                  Search results for: "{toolInvocation.args?.query || "Unknown query"}"
+                                </div>
+                                <div className="p-3 bg-zinc-800/50">
+                                  {toolInvocation.result.results && toolInvocation.result.results.length > 0 ? (
+                                    <div className="space-y-3">
+                                      {toolInvocation.result.results.map((result: ToolResult, idx: number) => (
+                                        <div key={idx} className="p-2 bg-zinc-800 rounded border border-zinc-700">
+                                          <h3 className="font-medium text-blue-400">{result.title}</h3>
+                                          <a
+                                            href={result.link}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-xs text-zinc-400 hover:text-blue-300 truncate block"
+                                          >
+                                            {result.link}
+                                          </a>
+                                          <p className="mt-1 text-sm text-zinc-300">{result.snippet}</p>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <p className="text-zinc-400">No results found</p>
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          default:
+                            return null
+                        }
+                      }
+
+                      return null
+                    }
+
+                    default:
+                      return null
+                  }
+                })}
+              </div>
+              <div className="mt-1 text-xs text-zinc-500 px-1">{message.role === "user" ? "You" : "AI Assistant"}</div>
+            </div>
+          ))
+        )}
+
+        {isLoading && (
+          <div className="flex items-center justify-center py-4">
+            <Loader2 className="w-5 h-5 text-zinc-400 animate-spin" />
+          </div>
+        )}
+      </div>
+
+      <form
+        onSubmit={handleSubmit}
+        className="fixed bottom-0 left-0 right-0 bg-zinc-900/80 backdrop-blur-sm border-t border-zinc-800"
+      >
+        <div className="container flex max-w-4xl p-4 mx-auto">
+          <input
+            className="flex-grow p-3 border border-zinc-700 rounded-l-md bg-zinc-800 text-white placeholder-zinc-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            value={input}
+            placeholder="Ask something or trigger a search..."
+            onChange={handleInputChange}
           />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="p-3 bg-blue-600 text-white rounded-r-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+          >
+            {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+          </button>
+        </div>
+      </form>
     </div>
-  );
+  )
 }
