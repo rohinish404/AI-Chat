@@ -1,74 +1,92 @@
 import { groq } from "@ai-sdk/groq"
-import { streamText, tool } from "ai"
-import { SerperClient } from "@agentic/stdlib"
-import { type NextRequest, NextResponse } from "next/server"
+import { streamText } from "ai"
 import { z } from "zod"
 
-const googleSearch = new SerperClient({
-  apiKey: process.env.SERPER_API_KEY,
-})
 
-export const maxDuration = 30
+const BlogPostSchema = z.object({
+  id: z.number(),
+  title: z.string(),
+  author: z.string(),
+  date: z.string(),
+  excerpt: z.string(),
+  content: z.string(),
+  tags: z.array(z.string()),
+  imageUrl: z.string(),
+});
 
-export const googleSearchTool = tool({
-  description:
-    "Search Google for a query and return the search results. Use this for general web searches, finding information, news, etc., when you do not have the information readily available.",
-  parameters: z.object({
-    query: z.string().describe("The search query to pass to Google. Be specific and comprehensive."),
-  }),
-  execute: async ({ query }: { query: string }) => {
-    try {
-      console.log(`[Google Search Tool] Initiating search for: "${query}"`)
-      if (!query || query.trim() === "") {
-        console.warn("[Google Search Tool] Received empty or blank query.")
-        return { error: "Search query cannot be empty.", searchPerformed: query, results: [] }
-      }
-
-      const searchResults = await googleSearch.search(query)
-      console.log(`[Google Search Tool] Received ${searchResults.organic?.length || 0} organic results for: "${query}"`)
-
-      const simplifiedResults = searchResults.organic
-        ?.map((r) => ({
-          title: r.title,
-          link: r.link,
-          snippet: r.snippet,
-        }))
-        .slice(0, 5)
-
-      if (simplifiedResults && simplifiedResults.length > 0) {
-        return { searchPerformed: query, results: simplifiedResults }
-      } else {
-        return { searchPerformed: query, message: "No relevant organic results found.", results: [] }
-      }
-    } catch (error: any) {
-      console.error("[Google Search Tool] Error during search:", error)
-      return {
-        error: "Failed to perform Google search.",
-        details: error.message || String(error),
-        searchPerformed: query,
-      }
-    }
+const blogPosts = [
+  {
+    id: 1,
+    title: "Getting Started with Next.js",
+    author: "Jane Smith",
+    date: "May 10, 2025",
+    excerpt: "Learn how to build modern web applications with Next.js, the React framework for production.",
+    content:
+      "Next.js gives you the best developer experience with all the features you need for production: hybrid static & server rendering, TypeScript support, smart bundling, route pre-fetching, and more. No config needed.",
+    tags: ["nextjs", "react", "frontend"],
+    imageUrl: "/placeholder.svg?height=200&width=400",
   },
-})
+  {
+    id: 2,
+    title: "The Power of Server Components",
+    author: "John Doe",
+    date: "May 8, 2025",
+    excerpt: "Discover how React Server Components can improve your application's performance and user experience.",
+    content:
+      "React Server Components allow you to render components on the server, reducing the JavaScript sent to the client and improving performance. They're a game-changer for modern web development.",
+    tags: ["react", "server-components", "performance"],
+    imageUrl: "/placeholder.svg?height=200&width=400",
+  },
+  {
+    id: 3,
+    title: "Building AI-Powered Applications",
+    author: "Alex Johnson",
+    date: "May 5, 2025",
+    excerpt: "Explore how to integrate AI capabilities into your web applications using the AI SDK.",
+    content:
+      "The AI SDK makes it easy to add AI capabilities to your applications. From text generation to image recognition, you can leverage the power of AI with just a few lines of code.",
+    tags: ["ai", "machine-learning", "sdk"],
+    imageUrl: "/placeholder.svg?height=200&width=400",
+  },
+]
 
-export async function POST(req: NextRequest) {
-  try {
-    const { messages } = await req.json()
+export async function POST(request: Request) {
+  const { messages } = await request.json()
 
-    const result = streamText({
-      model: groq("llama3-70b-8192"),
-      tools: {
-        searchGoogle: googleSearchTool,
+  const result = streamText({
+    model: groq("llama3-70b-8192"),
+    messages,
+    tools: {
+      searchBlogPosts: {
+        description: "Search for blog posts by topic, keyword, tag, or author.",
+        parameters: z.object({
+          query: z.string().describe("The search query for finding blog posts. Can be about the topic, content, tags, or author."),
+        }),
+        execute: async ({ query }: { query: string }): Promise<z.infer<typeof BlogPostSchema> | { notFound: string }> => {
+          console.log(`Searching blog posts with query: "${query}"`)
+          const lowerQuery = query.toLowerCase();
+          const post = blogPosts.find(
+            (p) =>
+              p.title.toLowerCase().includes(lowerQuery) ||
+              p.content.toLowerCase().includes(lowerQuery) ||
+              p.excerpt.toLowerCase().includes(lowerQuery) ||
+              p.author.toLowerCase().includes(lowerQuery) ||
+              p.tags.some((tag) => tag.toLowerCase().includes(lowerQuery)),
+          );
+
+          if (post) {
+             console.log(`Found post: "${post.title}"`)
+             return post;
+          } else {
+            console.log(`No post found for query: "${query}"`)
+            return { notFound: `No blog post found matching "${query}".` };
+          }
+        },
       },
-      toolChoice: "auto",
-      messages,
-      experimental_toolCallStreaming: true,
-    })
 
-    return result.toDataStreamResponse()
-  } catch (err) {
-    console.error("Error in POST handler:", err)
-    const errorMessage = err instanceof Error ? err.message : "An unknown error occurred"
-    return NextResponse.json({ error: "Internal Server Error", details: errorMessage }, { status: 500 })
-  }
+    },
+    maxSteps: 5,
+  });
+
+  return result.toDataStreamResponse();
 }
